@@ -7,6 +7,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 export async function POST(req: NextRequest) {
+  let outputFile = '';
+
   try {
     const { message } = await req.json();
 
@@ -40,12 +42,9 @@ export async function POST(req: NextRequest) {
     }
 
     speechConfig.speechSynthesisVoiceName = voiceName;
-
-    // Set the output format to MP3
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3;
 
-    // Use MP3 format instead of WAV
-    const outputFile = path.join(process.cwd(), `speech_${uuidv4()}.mp3`);
+    outputFile = path.join(process.cwd(), `speech_${uuidv4()}.mp3`);
     const audioConfig = sdk.AudioConfig.fromAudioFileOutput(outputFile);
 
     const synthesizer = new sdk.SpeechSynthesizer(speechConfig, audioConfig);
@@ -70,8 +69,15 @@ export async function POST(req: NextRequest) {
     // Read the synthesized file and return it
     const audioBuffer = await fs.readFile(outputFile);
 
-    // Optionally, clean up the temporary file
-    await fs.unlink(outputFile);
+    // Schedule the file deletion in the background
+    setTimeout(async () => {
+      try {
+        await fs.unlink(outputFile);
+        console.log('File deleted successfully');
+      } catch (unlinkError) {
+        console.error('Error deleting the output file:', unlinkError);
+      }
+    }, 5000); // 5-second delay before deletion
 
     return new NextResponse(audioBuffer, {
       status: 200,

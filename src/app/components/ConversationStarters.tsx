@@ -13,7 +13,7 @@ const ConversationStarters: React.FC<ConversationStartersProps> = ({ starters, o
           <button
             key={index}
             onClick={() => onSelect(starter)}
-            className="p-2 bg-orange-800 text-white rounded-lg hover:bg-orange-700 focus:outline-none"
+            className="p-2 border border-gray-400 rounded-lg text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none"
           >
             {starter}
           </button>

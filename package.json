@@ -9,10 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/cognitiveservices-translatortext": "^1.0.1",
     "@fortawesome/free-solid-svg-icons": "^6.6.0",
     "@fortawesome/react-fontawesome": "^0.2.2",
     "@types/uuid": "^10.0.0",
     "ai": "^3.2.43",
+    "axios": "^1.7.5",
     "extended-eventsource": "^1.4.9",
     "franc": "^6.2.0",
     "iso-639-3-to-1": "^1.0.0",

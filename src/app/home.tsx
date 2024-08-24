@@ -8,11 +8,13 @@ import AssistantFiles from './components/AssistantFiles';
 import { File, Reference, Message } from './types';
 import { v4 as uuidv4 } from 'uuid'; 
 import ConversationStarters from './components/ConversationStarters';
-
 import { CopyContentButton } from "./components/useCopytoClipboard";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faVolumeHigh, faStopCircle, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import ReadAloudButton from "./components/ReadAloud"
+import LoadingAnimation from "./components/LoadingAnimation"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPaperPlane, faStopCircle, faRefresh, faToggleOff, faToggleOn, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
+import { User2 } from "lucide-react";
+
 interface HomeProps {
   initialShowAssistantFiles: boolean;
   showCitations: boolean;
@@ -31,6 +33,9 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
   const [isStreaming, setIsStreaming] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [darkMode, setDarkMode] = useState(false);
+  const isCancelledRef = useRef(false);
+  const [isSpinning, setIsSpinning] = useState(false); // For the refresh icon spin effect
+  const [isToggled, setIsToggled] = useState(false); // For the toggle icon state
 
   useEffect(() => {
     // Check for dark mode preference
@@ -135,71 +140,157 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
     }
   };
   
+  // Updated handleChat function
   const handleChat = async () => {
     if (!input.trim()) return;
-  
+
     const newUserMessage: Message = {
       id: uuidv4(), // Generate a unique ID
       role: 'user',
       content: input,
-      timestamp: new Date().toISOString() 
+      timestamp: new Date().toISOString()
     };
-  
-    setMessages(prevMessages => [...prevMessages, newUserMessage]);
+
+    setMessages((prevMessages) => [...prevMessages, newUserMessage]);
     setInput('');
     setIsStreaming(true);
-  
+    isCancelledRef.current = false; // Reset cancellation ref for each new chat
+
     try {
-      const { object } = await chat([newUserMessage]);
+      const { object } = await chat([newUserMessage]); // Call chat to get stream object
       let accumulatedContent = '';
       const newAssistantMessage: Message = {
         id: uuidv4(),
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),
-        references: []
+        references: [],
       };
-      
-      setMessages(prevMessages => [...prevMessages, newAssistantMessage]);
-  
-      // Process the response stream from the Assistant that is created in the ./actions.ts Server action
+
+      setMessages((prevMessages) => [...prevMessages, newAssistantMessage]);
+
+      // Process the response stream from the Assistant
       for await (const chunk of readStreamableValue(object)) {
+        if (isCancelledRef.current) {
+          console.log('Streaming has been cancelled.');
+          accumulatedContent = ''; // Clear content if cancelled
+          break; // Exit the loop if cancelled
+        }
+
         try {
           const data = JSON.parse(chunk);
           const content = data.choices[0]?.delta?.content;
-          
+
           if (content) {
             accumulatedContent += content;
           }
-          
-          setMessages(prevMessages => {
+
+          setMessages((prevMessages) => {
+            if (isCancelledRef.current) return prevMessages; // Prevent updates if cancelled
             const updatedMessages = [...prevMessages];
             const lastMessage = updatedMessages[updatedMessages.length - 1];
             lastMessage.content = accumulatedContent;
             return updatedMessages;
           });
-  
+
         } catch (error) {
           console.error('Error parsing chunk:', error);
         }
       }
-  
-      // Extract references after the full message is received
-      const extractedReferences = extractReferences(accumulatedContent);
-      setReferencedFiles(extractedReferences);
-  
-      // Suggest next questions based on the conversation history
-      const suggested = await suggestNextQuestions([...messages, newUserMessage]);
-      setSuggestedQuestions(suggested);
-  
+
+      if (!isCancelledRef.current) {
+        // Only extract references and suggest questions if not cancelled
+        const extractedReferences = extractReferences(accumulatedContent);
+        setReferencedFiles(extractedReferences);
+
+        // Suggest next questions based on the conversation history
+        const suggested = await suggestNextQuestions([...messages, newUserMessage]);
+        setSuggestedQuestions(suggested);
+      }
+
     } catch (error) {
       console.error('Error in chat:', error);
       setError('An error occurred while chatting.');
     } finally {
-      setIsStreaming(false);
+      setIsStreaming(false); // Ensure streaming state is reset
     }
   };
   
+  const [loadingMessageId, setLoadingMessageId] = useState<string | null>(null);
+  
+
+  const handleRefreshClick = async (messageId: string) => {
+    const timeoutDuration = 10000; // Set a timeout duration of 10 seconds
+    let timeoutId;
+
+    setLoadingMessageId(messageId); // Start spinning the refresh icon and change the button icon
+
+    try {
+      // Set a timeout to stop the spinning if the operation takes too long
+      timeoutId = setTimeout(() => {
+        setLoadingMessageId(null);
+        console.error('Request timed out');
+        alert('The request took too long to complete. Please try again.');
+      }, timeoutDuration);
+
+      // Find the message to be refreshed
+      const messageIndex = messages.findIndex((msg) => msg.id === messageId);
+      if (messageIndex === -1) return;
+
+      // Optionally clear the existing message content while fetching the new one
+      setMessages((prevMessages) => {
+        const updatedMessages = [...prevMessages];
+        updatedMessages[messageIndex].content = ''; // Clear content
+        return updatedMessages;
+      });
+
+      // Simulate fetching the new message
+      const { object } = await chat([messages[messageIndex]]); // Regenerate content based on the original user message
+      let accumulatedContent = '';
+
+      for await (const chunk of readStreamableValue(object)) {
+        if (isCancelledRef.current) {
+          accumulatedContent = '';
+          break;
+        }
+
+        try {
+          const data = JSON.parse(chunk);
+          const content = data.choices[0]?.delta?.content;
+
+          if (content) {
+            accumulatedContent += content;
+          }
+
+          setMessages((prevMessages) => {
+            if (isCancelledRef.current) return prevMessages;
+            const updatedMessages = [...prevMessages];
+            updatedMessages[messageIndex].content = accumulatedContent; // Update with new content
+            return updatedMessages;
+          });
+        } catch (error) {
+          console.error('Error parsing chunk:', error);
+        }
+      }
+
+      clearTimeout(timeoutId); // Clear the timeout if the operation completes in time
+
+    } catch (error) {
+      console.error('Error refreshing message:', error);
+      alert('An error occurred while refreshing the message. Please try again.');
+
+    } finally {
+      clearTimeout(timeoutId); // Ensure timeout is cleared
+      setLoadingMessageId(null); // Stop spinning the refresh icon and change the button icon back
+    }
+};
+  
+  // Function to handle stopping the stream
+  const handleStop = () => {
+    isCancelledRef.current = true; // Use ref to immediately update cancellation status
+    setIsStreaming(false); // Immediately stop streaming state
+  };
+
 
   const starters = [
     "ભાવતીર્થ શુ છે?",
@@ -325,9 +416,82 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
     }
   }, 0);
 };
+const [translatedMessages, setTranslatedMessages] = useState<{ [key: string]: string | null }>({});
+const [originalMessages, setOriginalMessages] = useState<{ [key: string]: string | null }>({});
+const [loadingTranslations, setLoadingTranslations] = useState<{ [key: string]: boolean }>({});
+
+const handleToggleClick = async (messageId: string, currentContent: string) => {
+  const isCurrentlyTranslated = !!translatedMessages[messageId];
+
+  // Extract references and main content
+  const [mainContent, references] = currentContent.split('References:').map((part) => part.trim());
+  const originalContent = originalMessages[messageId] || mainContent;
+
+  // Format references for new lines, including moving "References" to the next line
+  const formattedReferences = references ? `\n\nReferences:\n${references.split(';').join('\n')}` : '';
+
+  // Immediately toggle the message content to give user feedback
+  setMessages((prevMessages) => 
+    prevMessages.map((msg) =>
+      msg.id === messageId
+        ? { ...msg, content: isCurrentlyTranslated ? originalContent + formattedReferences : 'Translating...' }
+        : msg
+    )
+  );
+
+  setLoadingTranslations((prev) => ({ ...prev, [messageId]: true }));
+
+  try {
+    if (isCurrentlyTranslated) {
+      // Revert to original content
+      setTranslatedMessages((prev) => ({ ...prev, [messageId]: null }));
+    } else {
+      // Check if translation is cached
+      let translatedContent = translatedMessages[messageId];
+      if (!translatedContent) {
+        const response = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message: mainContent }),
+        });
+
+        const { translations } = await response.json();
+        translatedContent = translations[0]?.text || null;
+
+        // Cache the original and translated content
+        setOriginalMessages((prev) => ({ ...prev, [messageId]: mainContent }));
+        setTranslatedMessages((prev) => ({ ...prev, [messageId]: translatedContent }));
+      }
+
+      // Update the message content with the translated content + original references
+      setMessages((prevMessages) => 
+        prevMessages.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, content: (translatedContent || 'Translation failed. Try again.') + formattedReferences }
+            : msg
+        )
+      );
+    }
+  } catch (error) {
+    console.error('Error translating message:', error);
+
+    // Revert to original content on error
+    setMessages((prevMessages) => 
+      prevMessages.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, content: originalContent + formattedReferences }
+          : msg
+      )
+    );
+  } finally {
+    setLoadingTranslations((prev) => ({ ...prev, [messageId]: false }));
+  }
+};
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-start p-4 sm:p-8 bg-gradient dark:bg-gray-900">
+    <main className="flex min-h-screen flex-col items-center justify-start p-4 sm:p-8 bg-gradient-to-b from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
       <button
         onClick={toggleDarkMode}
         className="absolute top-4 right-4 p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
@@ -377,7 +541,9 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
                     <div className={`flex items-start ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`${message.role === 'user' ? 'ml-2' : 'mr-2'}`}>
                         {message.role === 'user' ? (
-                          <span className="text-2xl">👤</span>
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow">
+                          <User2 className="h-8 w-8 text-gray-800 dark:text-white" />
+                        </div>
                         ) : (
                           <a href="https://jyot.in" target="_blank" rel="noopener noreferrer">
                             <img
@@ -389,8 +555,9 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
                         )}
                       </div>
                       <span className={`inline-block p-2 rounded-lg ${
-                        message.role === 'user' ? 'bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        message.role === 'user' ? 'bg-white text-black dark:bg-gray-800 dark:text-white' : 'bg-white text-black dark:bg-gray-800 dark:text-white'
                       } max-w-[80%] break-words`}>
+
                         <ReactMarkdown
                           components={{
                             a: ({ node, ...props }) => (
@@ -402,12 +569,39 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
                         >
                           {message.content}
                         </ReactMarkdown>
-                        {message.role !== 'user' && (
+                        {message.role !== 'user' && !isStreaming && (
                         <div className="flex items-center gap-2 mt-1">
+                        {/* Copy Content Button with Zoom Effect and Alignment Fix */}
+                        <div className="flex items-center hover:scale-125 transform transition-transform duration-200">
                           <CopyContentButton content={message.content} />
+                        </div>
+                  
+                        {/* Read Aloud Button with Zoom Effect and Alignment Fix */}
+                        <div className="flex items-center hover:scale-125 transform transition-transform duration-200">
                           <ReadAloudButton content={message.content} />
                         </div>
-                      )}
+                  
+                        {/* Refresh Icon with Spin Effect, Zoom Effect, and Alignment Fix */}
+                        <div key={message.id} className="flex items-center">
+                          <FontAwesomeIcon
+                            icon={faRefresh}
+                            className={`mr-3 hover:scale-125 cursor-pointer ${
+                              loadingMessageId === message.id ? 'animate-spin' : ''
+                            }`}
+                            onClick={() => handleRefreshClick(message.id)}
+                          />
+                        </div>
+                  
+                        {/* Toggle Icon with State Change, Zoom Effect, and Alignment Fix */}
+                        <div className="flex items-center">
+                          <FontAwesomeIcon
+                            icon={translatedMessages[message.id] ? faToggleOn : faToggleOff}
+                            className={`mr-3 cursor-pointer hover:scale-125 transform transition-transform duration-200 ${loadingTranslations[message.id] ? 'animate-spin' : ''}`}
+                            onClick={() => handleToggleClick(message.id, message.content)}
+                          />
+                        </div>
+                      </div>
+                        )}
                         {message.references && showCitations && (
                           <div className="mt-2">
                             <ul>
@@ -425,30 +619,46 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
                     </div>
                   </div>
                 ))}
+
+                {isStreaming && (
+                  <div className="my-2">
+                    <LoadingAnimation />
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
-              </div>
-              <form onSubmit={(e) => { e.preventDefault(); handleChat(); }} className="flex mb-4">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="flex-grow p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Type your message"
-                  disabled={isStreaming}
-                />
-                <button
-                  type="submit"
-                  ref={buttonRef} // Attach the ref to the submit button
-                  className="bg-gray-500 text-white p-2 rounded-r-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  disabled={isStreaming}
-                >
-                  {isStreaming ? 'Streaming...' : 'Send'}
-                </button>
-              </form>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleChat(); }} className="flex mb-4">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    className="flex-grow p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Type your message"
+                    disabled={isStreaming}
+                  />
+                  <button
+                    type="button"
+                    ref={buttonRef}
+                    className="bg-orange-700 text-white p-2 rounded-r-lg hover:bg-orange-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onClick={isStreaming ? handleStop : handleChat}
+                    disabled={!input.trim() && !isStreaming}
+                  >
+                    {loadingMessageId ? (
+                      <FontAwesomeIcon icon={faCircleNotch} className="animate-spin" />
+                    ) : isStreaming ? (
+                      <FontAwesomeIcon icon={faStopCircle} />
+                    ) : (
+                      <FontAwesomeIcon icon={faPaperPlane} />
+                    )}
+                  </button>
+                </form>
 
               {suggestedQuestions.length > 0 && (
                 <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mt-4">
-                  <h3 className="font-bold mb-2">Suggested Next Questions:</h3>
+                  <h3 className="font-bold mb-2 text-black dark:text-white">
+                    Suggested Next Questions:
+                  </h3>
+
                   <div className="flex flex-wrap gap-2">
                     {suggestedQuestions.map((question, index) => (
                       <button
@@ -462,7 +672,6 @@ export default function Home({ initialShowAssistantFiles, showCitations }: HomeP
                   </div>
                 </div>
               )}
-
 
               {error && (
                 <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-md shadow-md">

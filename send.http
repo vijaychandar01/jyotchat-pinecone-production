@@ -1,0 +1,17 @@
+POST http://localhost:3000/api/translate
+Content-Type: application/json
+
+{
+  "message": "Hello, how are you?",
+  "targetLang": "es"
+}
+
+###
+
+POST http://localhost:3000/api/translate
+Content-Type: application/json
+
+{
+  "message": "How's the weather today?",
+  "targetLang": "es"
+}

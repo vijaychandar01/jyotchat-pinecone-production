@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faVolumeHigh, faStopCircle, faSpinner } from "@fortawesome/free-solid-svg-icons";
 
+// Global reference to keep track of the currently playing audio
+let currentlyPlayingAudio: HTMLAudioElement | null = null;
+
 export default function ReadAloudButton({ content }: { content: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -38,18 +41,29 @@ export default function ReadAloudButton({ content }: { content: string }) {
           console.log("Stopping playback...");
           audioElement.current.pause();
           audioElement.current.currentTime = 0;
-          setIsPlaying(false); // Explicitly set state here
+          setIsPlaying(false);
+          currentlyPlayingAudio = null;
         }
       } else {
+        // Stop any currently playing audio
+        if (currentlyPlayingAudio && currentlyPlayingAudio !== audioElement.current) {
+          console.log("Stopping the currently playing audio...");
+          currentlyPlayingAudio.pause();
+          currentlyPlayingAudio.currentTime = 0;
+        }
+
         setIsLoadingAudio(true);
         console.log("Fetching audio...");
+
+        // Split the content before the "References:" section
+        const contentBeforeReferences = content.split('References:')[0].trim();
 
         const response = await fetch('/api/read-aloud', {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: content }),
+          body: JSON.stringify({ message: contentBeforeReferences }),
         });
 
         if (response.ok) {
@@ -67,7 +81,8 @@ export default function ReadAloudButton({ content }: { content: string }) {
           audioElement.current = new Audio(url);
 
           audioElement.current.play().then(() => {
-            setIsPlaying(true); // Set state after playback starts
+            setIsPlaying(true);
+            currentlyPlayingAudio = audioElement.current; // Update the global reference
           });
 
           audioElement.current.addEventListener("canplaythrough", () => {
@@ -79,6 +94,7 @@ export default function ReadAloudButton({ content }: { content: string }) {
             console.error("Error during audio playback");
             setIsPlaying(false);
             setIsLoadingAudio(false);
+            currentlyPlayingAudio = null;
           });
         } else {
           console.error("Error fetching audio:", response.statusText);
@@ -94,12 +110,13 @@ export default function ReadAloudButton({ content }: { content: string }) {
   return (
     <button onClick={handleAudioControl} style={{ background: "transparent", border: "none", cursor: "pointer" }}>
       {isLoadingAudio ? (
-        <FontAwesomeIcon icon={faSpinner} spin size="sm" style={{ cursor: "pointer" }} />
+        <FontAwesomeIcon icon={faSpinner} spin size="sm" style={{ cursor: "pointer" }} className="mr-3" />
       ) : (
         <FontAwesomeIcon
           icon={isPlaying ? faStopCircle : faVolumeHigh}
           size="sm"
           style={{ cursor: "pointer" }}
+          className="mr-3"
         />
       )}
     </button>

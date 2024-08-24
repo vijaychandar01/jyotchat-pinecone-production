@@ -14,6 +14,11 @@ import LoadingAnimation from "./components/LoadingAnimation"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane, faStopCircle, faRefresh, faToggleOff, faToggleOn, faCircleNotch } from "@fortawesome/free-solid-svg-icons";
 import { User2 } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "./components/HoverCard";
 
 interface HomeProps {
   initialShowAssistantFiles: boolean;
@@ -572,34 +577,70 @@ const handleToggleClick = async (messageId: string, currentContent: string) => {
                         {message.role !== 'user' && !isStreaming && (
                         <div className="flex items-center gap-2 mt-1">
                         {/* Copy Content Button with Zoom Effect and Alignment Fix */}
-                        <div className="flex items-center hover:scale-125 transform transition-transform duration-200">
-                          <CopyContentButton content={message.content} />
-                        </div>
-                  
-                        {/* Read Aloud Button with Zoom Effect and Alignment Fix */}
-                        <div className="flex items-center hover:scale-125 transform transition-transform duration-200">
-                          <ReadAloudButton content={message.content} />
-                        </div>
-                  
-                        {/* Refresh Icon with Spin Effect, Zoom Effect, and Alignment Fix */}
-                        <div key={message.id} className="flex items-center">
-                          <FontAwesomeIcon
-                            icon={faRefresh}
-                            className={`mr-3 hover:scale-125 cursor-pointer ${
-                              loadingMessageId === message.id ? 'animate-spin' : ''
-                            }`}
-                            onClick={() => handleRefreshClick(message.id)}
-                          />
-                        </div>
-                  
-                        {/* Toggle Icon with State Change, Zoom Effect, and Alignment Fix */}
                         <div className="flex items-center">
-                          <FontAwesomeIcon
-                            icon={translatedMessages[message.id] ? faToggleOn : faToggleOff}
-                            className={`mr-3 cursor-pointer hover:scale-125 transform transition-transform duration-200 ${loadingTranslations[message.id] ? 'animate-spin' : ''}`}
-                            onClick={() => handleToggleClick(message.id, message.content)}
-                          />
+                          {/* Hover Card for Copy Content Button */}
+                          <HoverCard>
+                            <HoverCardTrigger>
+                              <div className="hover:scale-125 transform transition-transform duration-200">
+                                <CopyContentButton content={message.content} />
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent>
+                              Copy Content
+                            </HoverCardContent>
+                          </HoverCard>
                         </div>
+
+                        <div className="flex items-center">
+                          {/* Hover Card for Read Aloud Button */}
+                          <HoverCard>
+                            <HoverCardTrigger>
+                              <div className="hover:scale-125 transform transition-transform duration-200">
+                                <ReadAloudButton content={message.content} />
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent>
+                              Read Aloud
+                            </HoverCardContent>
+                          </HoverCard>
+                        </div>
+
+                        <div key={message.id} className="flex items-center">
+                          {/* Hover Card for Refresh Icon */}
+                          <HoverCard>
+                            <HoverCardTrigger>
+                              <div className="hover:scale-125 transform transition-transform duration-200">
+                                <FontAwesomeIcon
+                                  icon={faRefresh}
+                                  className={`mr-3 cursor-pointer ${loadingMessageId === message.id ? 'animate-spin' : ''}`}
+                                  onClick={() => handleRefreshClick(message.id)}
+                                />
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent>
+                              Regenerate
+                            </HoverCardContent>
+                          </HoverCard>
+                        </div>
+
+                        <div className="flex items-center">
+                          {/* Hover Card for Toggle Icon */}
+                          <HoverCard>
+                            <HoverCardTrigger>
+                              <div className="hover:scale-125 transform transition-transform duration-200">
+                                <FontAwesomeIcon
+                                  icon={translatedMessages[message.id] ? faToggleOn : faToggleOff}
+                                  className={`mr-3 cursor-pointer ${loadingTranslations[message.id] ? 'animate-spin' : ''}`}
+                                  onClick={() => handleToggleClick(message.id, message.content)}
+                                />
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent>
+                              Translation
+                            </HoverCardContent>
+                          </HoverCard>
+                        </div>
+
                       </div>
                         )}
                         {message.references && showCitations && (

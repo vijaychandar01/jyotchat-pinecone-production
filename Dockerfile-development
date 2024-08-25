@@ -9,12 +9,14 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Build the Next.js application
+# Copy application files
 COPY . .
-RUN pnpm run build
+
+# Use .env.local directly
+COPY .env.local .env.local
 
 # Expose the port for the application
 EXPOSE 3000
 
-# Command to run the application in production mode
-CMD ["pnpm", "run", "start"]
+# Command to run the application in development mode
+CMD ["pnpm", "run", "dev"]
